@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>贪吃蛇</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #111;
+            font-family: Arial, sans-serif;
+        }
+
+        canvas {
+            border: 5px solid #333;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        #restartButton {
+            margin-top: 20px;
+            padding: 15px 30px;
+            font-size: 18px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        #restartButton:hover {
+            background-color: #0056b3;
+        }
+
+        #modeSelector {
+            margin-top: 10px;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        #h2{
+            color: #ff0000;
+        }
+    </style>
+</head>
+
+<body>
+    
+    <canvas id="gameCanvas"></canvas>
+    
+    <button id="restartButton" onclick="restartGame()">再来一局</button>
+    <select id="modeSelector" onchange="changeMode(this.value)">
+        <option value="easy">简单</option>
+        <option value="normal" selected>普通</option>
+        <option value="hard">困难</option>
+    </select>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const restartButton = document.getElementById('restartButton');
+        const modeSelector = document.getElementById('modeSelector');
+
+        canvas.width = window.innerWidth * 0.8;
+        canvas.height = window.innerHeight * 0.8;
+
+        const WINNING_SCORE = 1000;
+        let playerSnake = [{ x: canvas.width / 2, y: canvas.height / 2 }];
+        let playerDirection = { x: 0, y: 0 };
+        let playerScore = 0;
+        const playerName = "玩家";
+
+        const numAI = 3;
+        let aiSnakes = [];
+
+        const numFoods = 5;
+        let foods = [];
+
+        let speed = 5;
+        let gameOver = false;
+
+        const consonants = 'bcdfghjklmnpqrstvwxyz';
+        const vowels = 'aeiou';
+
+        function generateRandomName() {
+            let nameLength = Math.floor(Math.random() * 3) + 3;
+            let name = '';
+            for (let i = 0; i < nameLength; i++) {
+                if (i % 2 === 0) {
+                    name += consonants[Math.floor(Math.random() * consonants.length)];
+                } else {
+                    name += vowels[Math.floor(Math.random() * vowels.length)];
+                }
+            }
+            return name.charAt(0).toUpperCase() + name.slice(1);
+        }
+
+        const modeSettings = {
+            easy: {
+                speed: 3,
+                aiSpeedFactor: 0.8
+            },
+            normal: {
+                speed: 5,
+                aiSpeedFactor: 1
+            },
+            hard: {
+                speed: 7,
+                aiSpeedFactor: 1.2
+            }
+        };
+        let currentMode = 'normal';
+
+        function initGame() {
+            playerSnake = [{ x: canvas.width / 2, y: canvas.height / 2 }];
+            playerDirection = { x: 0, y: 0 };
+            playerScore = 0;
+
+            aiSnakes = [];
+            for (let i = 0; i < numAI; i++) {
+                aiSnakes.push({
+                    body: [{ x: Math.random() * canvas.width, y: Math.random() * canvas.height }],
+                    direction: { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2 },
+                    score: 0,
+                    targetFood: null,
+                    name: generateRandomName()
+                });
+                const length = Math.sqrt(aiSnakes[i].direction.x * aiSnakes[i].direction.x + aiSnakes[i].direction.y * aiSnakes[i].direction.y);
+                aiSnakes[i].direction.x /= length;
+                aiSnakes[i].direction.y /= length;
+            }
+
+            foods = [];
+            for (let i = 0; i < numFoods; i++) {
+                const size = Math.floor(Math.random() * 3) + 1;
+                const score = size * 10;
+                foods.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    size: size,
+                    score: score
+                });
+            }
+
+            speed = modeSettings[currentMode].speed;
+            aiSnakes.forEach(aiSnake => {
+                aiSnake.speed = speed * modeSettings[currentMode].aiSpeedFactor;
+            });
+
+            gameOver = false;
+            restartButton.style.display = 'none';
+        }
+
+        function drawSnake(snake, color) {
+            ctx.fillStyle = color;
+            snake.forEach((segment, index) => {
+                ctx.beginPath();
+                ctx.arc(segment.x, segment.y, 10, 0, Math.PI * 2);
+                ctx.fill();
+                if (index === 0) {
+                    const eyeSize = 3;
+                    const eyeOffset = 6;
+                    const angle = Math.atan2(snake[index + 1]? snake[index + 1].y - segment.y : 0, snake[index + 1]? snake[index + 1].x - segment.x : 0);
+                    const eyeX1 = segment.x + eyeOffset * Math.cos(angle + Math.PI / 4);
+                    const eyeY1 = segment.y + eyeOffset * Math.sin(angle + Math.PI / 4);
+                    const eyeX2 = segment.x + eyeOffset * Math.cos(angle - Math.PI / 4);
+                    const eyeY2 = segment.y + eyeOffset * Math.sin(angle - Math.PI / 4);
+                    ctx.fillStyle = '#fff';
+                    ctx.beginPath();
+                    ctx.arc(eyeX1, eyeY1, eyeSize, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(eyeX2, eyeY2, eyeSize, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+        }
+
+        function drawFood() {
+            ctx.fillStyle = '#FF5733';
+            foods.forEach(food => {
+                ctx.beginPath();
+                ctx.arc(food.x, food.y, food.size * 5, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        function updatePlayer() {
+            if (gameOver) return;
+            const head = { x: playerSnake[0].x + playerDirection.x * speed, y: playerSnake[0].y + playerDirection.y * speed };
+            playerSnake.unshift(head);
+
+            let ateFood = false;
+            for (let i = 0; i < foods.length; i++) {
+                const food = foods[i];
+                if (Math.hypot(head.x - food.x, head.y - food.y) < food.size * 5) {
+                    playerScore += food.score;
+                    foods.splice(i, 1);
+                    const size = Math.floor(Math.random() * 3) + 1;
+                    const score = size * 10;
+                    foods.push({
+                        x: Math.random() * canvas.width,
+                        y: Math.random() * canvas.height,
+                        size: size,
+                        score: score
+                    });
+                    ateFood = true;
+                    break;
+                }
+            }
+
+            if (!ateFood) {
+                playerSnake.pop();
+            }
+
+            if (head.x < 0 || head.x > canvas.width || head.y < 0 || head.y > canvas.height) {
+                resetPlayer();
+            }
+
+            aiSnakes.forEach(aiSnake => {
+                for (let i = 1; i < aiSnake.body.length; i++) {
+                    if (Math.hypot(head.x - aiSnake.body[i].x, head.y - aiSnake.body[i].y) < 20) {
+                        resetPlayer();
+                        aiSnake.score++;
+                        break;
+                    }
+                }
+            });
+
+            if (playerScore >= WINNING_SCORE) {
+                endGame(playerName);
+            }
+        }
+
+        function updateAI() {
+            if (gameOver) return;
+            const usedFoods = new Set();
+            aiSnakes.forEach((aiSnake, aiIndex) => {
+                let availableFoods = foods.filter(food =>!usedFoods.has(food));
+
+                if (availableFoods.length === 0) {
+                    aiSnake.direction = { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2 };
+                    const length = Math.sqrt(aiSnake.direction.x * aiSnake.direction.x + aiSnake.direction.y * aiSnake.direction.y);
+                    aiSnake.direction.x /= length;
+                    aiSnake.direction.y /= length;
+                } else {
+                    let closestFood = null;
+                    let minDistance = Infinity;
+                    availableFoods.forEach(food => {
+                        const distance = Math.hypot(aiSnake.body[0].x - food.x, aiSnake.body[0].y - food.y);
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            closestFood = food;
+                        }
+                    });
+
+                    aiSnake.targetFood = closestFood;
+                    usedFoods.add(closestFood);
+
+                    const angle = Math.atan2(closestFood.y - aiSnake.body[0].y, closestFood.x - aiSnake.body[0].x);
+                    aiSnake.direction.x = Math.cos(angle);
+                    aiSnake.direction.y = Math.sin(angle);
+                }
+
+                const aiHead = { x: aiSnake.body[0].x + aiSnake.direction.x * aiSnake.speed, y: aiSnake.body[0].y + aiSnake.direction.y * aiSnake.speed };
+                aiSnake.body.unshift(aiHead);
+
+                let aiAteFood = false;
+                for (let i = 0; i < foods.length; i++) {
+                    const food = foods[i];
+                    if (Math.hypot(aiHead.x - food.x, aiHead.y - food.y) < food.size * 5) {
+                        aiSnake.score += food.score;
+                        foods.splice(i, 1);
+                        const size = Math.floor(Math.random() * 3) + 1;
+                        const score = size * 10;
+                        foods.push({
+                            x: Math.random() * canvas.width,
+                            y: Math.random() * canvas.height,
+                            size: size,
+                            score: score
+                        });
+                        aiAteFood = true;
+                        break;
+                    }
+                }
+
+                if (!aiAteFood) {
+                    aiSnake.body.pop();
+                }
+
+                if (aiHead.x < 0 || aiHead.x > canvas.width || aiHead.y < 0 || aiHead.y > canvas.height) {
+                    resetAI(aiSnake);
+                }
+
+                [playerSnake,...aiSnakes.filter((_, i) => i!== aiIndex)].forEach(otherSnake => {
+                    for (let i = 1; i < otherSnake.length; i++) {
+                        if (Math.hypot(aiHead.x - otherSnake[i].x, aiHead.y - otherSnake[i].y) < 20) {
+                            resetAI(aiSnake);
+                            if (otherSnake === playerSnake) {
+                                playerScore++;
+                            } else {
+                                aiSnakes.find(snake => snake.body === otherSnake).score++;
+                            }
+                            break;
+                        }
+                    }
+                });
+
+                if (aiSnake.score >= WINNING_SCORE) {
+                    endGame(aiSnake.name);
+                }
+            });
+        }
+
+        function resetPlayer() {
+            playerSnake = [{ x: canvas.width / 2, y: canvas.height / 2 }];
+            playerDirection = { x: 0, y: 0 };
+            playerScore = 0;
+        }
+
+        function resetAI(aiSnake) {
+            aiSnake.body = [{ x: Math.random() * canvas.width, y: Math.random() * canvas.height }];
+            aiSnake.direction = { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2 };
+            const length = Math.sqrt(aiSnake.direction.x * aiSnake.direction.x + aiSnake.direction.y * aiSnake.direction.y);
+            aiSnake.direction.x /= length;
+            aiSnake.direction.y /= length;
+            aiSnake.score = 0;
+            aiSnake.targetFood = null;
+            aiSnake.speed = speed * modeSettings[currentMode].aiSpeedFactor;
+        }
+
+        function handleInput(event) {
+            if (gameOver) return;
+            const rect = canvas.getBoundingClientRect();
+            const touch = event.touches? event.touches[0] : event;
+            const mouseX = touch.clientX - rect.left;
+            const mouseY = touch.clientY - rect.top;
+
+            const angle = Math.atan2(mouseY - playerSnake[0].y, mouseX - playerSnake[0].x);
+            playerDirection.x = Math.cos(angle);
+            playerDirection.y = Math.sin(angle);
+        }
+
+        function endGame(winnerName) {
+            gameOver = true;
+            alert(`${winnerName} 获得了胜利！分数达到了 ${WINNING_SCORE} 分。`);
+            restartButton.style.display = 'block';
+        }
+
+        function restartGame() {
+            initGame();
+        }
+
+        function changeMode(mode) {
+            currentMode = mode;
+            initGame();
+        }
+
+        canvas.addEventListener('mousemove', handleInput);
+        canvas.addEventListener('touchmove', handleInput);
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            updatePlayer();
+            updateAI();
+
+            drawSnake(playerSnake, '#00FF00');
+            aiSnakes.forEach(aiSnake => drawSnake(aiSnake.body, '#0000FF'));
+            drawFood();
+
+            ctx.fillStyle = '#fff';
+            ctx.font = '20px Arial';
+            ctx.fillText(`${playerName} Score: ${playerScore}`, 10, 30);
+
+            aiSnakes.forEach((aiSnake, index) => {
+                ctx.fillText(`${aiSnake.name} Score: ${aiSnake.score}`, 10, 60 + index * 30);
+            });
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        initGame();
+        gameLoop();
+    </script>
+    <h2>3000分胜利</h2>
+</body>
+
+</html>
+
+
